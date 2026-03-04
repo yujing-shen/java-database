@@ -44,15 +44,46 @@ public class DBServer {
             File fileToOpen = new File(name);
             FileReader reader = new FileReader(fileToOpen);
             BufferedReader buffReader = new BufferedReader(reader);
-            String line = buffReader.readLine();
-            while (line != null) {
-                content.append(line).append("\n");
-                line = buffReader.readLine();
+
+            Table myTable = new Table("people");
+            int maxId = 0;
+
+            String headerLine = buffReader.readLine();
+            if (headerLine != null) {
+                String[] headers = headerLine.split("\t");
+                for (String header : headers) {
+                    myTable.addColumnName(header);
+                }
+            }
+            String dataline = buffReader.readLine();
+            while (dataline != null) {
+                String[] values = dataline.split("\t");
+
+                Row newRow = new Row();
+                for (String value : values) {
+                    newRow.addValue(value);
+                }
+
+                myTable.addRow(newRow);
+
+                try {
+                    int currentId = Integer.parseInt(values[0]);
+                    if (currentId > maxId) {
+                        maxId = currentId;
+                    }
+                } catch (NumberFormatException nfe) {
+
+                }
+                dataline = buffReader.readLine();
+
             }
             buffReader.close();
-            System.out.println("File content is " + content);
-            return "[OK] " + content.toString();
+            myTable.updateNextAvailableId(maxId);
+            System.out.println(myTable.getRows().size() + " rows updated");
+            System.out.println("The next Id will be " + myTable.getNextNextId());
+            return "[OK] Table loaded successfully";
         } catch (IOException ioe) {
+            System.out.println("THE FILE DOES NOT EXIST");
             return "[ERROR] " + ioe.getMessage();
         }
     }
