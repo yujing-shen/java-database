@@ -3,6 +3,11 @@ package edu.uob;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -43,4 +48,37 @@ public class MyTests {
         assertEquals(9,idAfterLoad, "The next ID should be 9");
 
     }
+
+    // Task5 Java Data Structures
+    @Test
+    public void testTableSaveToFile() throws IOException {
+        String testFolderPath = "databases";
+        String testTableName = "test_persistence";
+        Table testTable = new Table(testTableName);
+        testTable.addColumnName("id");
+        testTable.addColumnName("Name");
+        testTable.addColumnName("Age");
+
+        Row r1 = new Row();
+        r1.addValue("1");
+        r1.addValue("Alice");
+        r1.addValue("20");
+        testTable.addRow(r1);
+
+        testTable.saveToFIle(testFolderPath);
+        File savedFile = new File(testFolderPath + File.separator + testTableName + ".tab");
+        assertTrue(savedFile.exists(), "The file should exist");
+
+        BufferedReader reader = new BufferedReader(new FileReader(savedFile));
+        String header = reader.readLine();
+        String firstDataLine = reader.readLine();
+        reader.close();
+        assertEquals("id\tName\tAge", header, "The header format is incorrect. It should be a tab-separated string.");
+        assertEquals("1\tAlice\t20", firstDataLine, "The first data line is incorrect.");
+        savedFile.delete();
+
+
+    }
+
+
 }

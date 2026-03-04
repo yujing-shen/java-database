@@ -81,7 +81,23 @@ public class DBServer {
             myTable.updateNextAvailableId(maxId);
             System.out.println(myTable.getRows().size() + " rows updated");
             System.out.println("The next Id will be " + myTable.getNextNextId());
-            return "[OK] Table loaded successfully";
+
+            // Task 5: Java Data Structures
+            int ageColumnIndex = myTable.getColumnNames().indexOf("Age");
+            if (ageColumnIndex != -1) {
+                for (Row row : myTable.getRows()) {
+                    String oldAgeStr = row.getValueAt(ageColumnIndex);
+                    try {
+                        int newAge = Integer.parseInt(oldAgeStr) + 1;
+                        row.setValueAt(ageColumnIndex, String.valueOf(newAge));
+                    }
+                    catch (NumberFormatException nfe) {
+
+                    }
+                }
+            }
+            myTable.saveToFIle(this.storageFolderPath);
+            return "[OK] Table loaded, modified, and saved";
         } catch (IOException ioe) {
             System.out.println("THE FILE DOES NOT EXIST");
             return "[ERROR] " + ioe.getMessage();

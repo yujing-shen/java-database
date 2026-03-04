@@ -1,7 +1,11 @@
 package edu.uob;
 
+import java.io.BufferedWriter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+
+import static java.io.File.separator;
 
 public class Table {
     private String tableName;
@@ -20,7 +24,7 @@ public class Table {
         return tableName;
     }
 
-    public List<String> getColumnName() {
+    public List<String> getColumnNames() {
         return columnNames;
     }
 
@@ -46,5 +50,22 @@ public class Table {
         if (maxIdInFile >= this.nextAvailableId) {
             nextAvailableId = maxIdInFile + 1;
         }
+    }
+
+    public void saveToFIle(String storageFolderPath) throws IOException {
+        java.io.File file = new java.io.File(storageFolderPath + separator +this.tableName + ".tab");
+
+        BufferedWriter writer = new java.io.BufferedWriter(new java.io.FileWriter(file));
+
+        String headerLine = String.join("\t", this.columnNames);
+        writer.write(headerLine);
+        writer.write("\n");
+        for (Row row : this.rows) {
+            String dataLine = String.join("\t", row.getValues());
+            writer.write(dataLine);
+            writer.write("\n");
+        }
+        writer.flush();
+        writer.close();
     }
 }
