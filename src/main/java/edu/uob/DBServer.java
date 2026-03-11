@@ -57,6 +57,7 @@ public class DBServer {
                 case "CREATE": return handleCreate(tokens);
                 case "INSERT": return handleInsert(tokens);
                 case "SELECT": return handleSelect(tokens);
+                case "DROP"  : return handleDrop(tokens);
                 default:
                     return "[ERROR] Unknown command: " + firstWord;
             }
@@ -256,6 +257,49 @@ public class DBServer {
         } catch (Exception e) {
             return "[ERROR] Failed to select table: " + e.getMessage();
         }
+    }
+
+    private String handleDrop(List<String> tokens) {
+        if (tokens.size() < 3) {
+            return "[ERROR] Invalid drop command length";
+        }
+        String targetObjectName = tokens.get(1).toUpperCase();
+
+        if (targetObjectName.equals("TABLE")) {
+            if (this.currentDatabase == null || this.currentDatabase.isEmpty()) {
+                return "[ERROR] You must USE a database first";
+            }
+            String tableName = tokens.get(2);
+            String tablePath = this.storageFolderPath + File.separator + this.currentDatabase + File.separator + tableName + ".tab";
+            File tableFile = new File(tablePath);
+            if (!tableFile.exists()) {
+                return "[ERROR] Table " + tableName + " does not exist";
+            } else {
+                tableFile.delete();
+                return "[OK] Table " + tableName + " dropped successfully";
+            }
+        } else if (targetObjectName.equals("DATABASE")) {
+            String databaseName = tokens.get(2);
+            String databasePath = this.storageFolderPath + File.separator + databaseName;
+            File databaseFolder = new File(databasePath);
+            if (!databaseFolder.exists()) {
+                return "[ERROR] Database " + databaseName + " does not exist";
+            }
+
+            File[] allFiles = databaseFolder.listFiles();
+            if (allFiles != null) {
+                for (File file : allFiles) {
+                    file.delete();
+                }
+            }
+            databaseFolder.delete();
+            if (databaseFolder.equals(this.currentDatabase)) {
+                this.currentDatabase = "";
+                return "[OK] Database " + databaseName + " dropped successfully";
+            }
+        }
+        return "[ERROR] Invalid DROP target: " + tokens.get(1);
+
     }
 
     private Table loadTableFromFile(String tableName) throws IOException {
