@@ -293,10 +293,10 @@ public class DBServer {
                 }
             }
             databaseFolder.delete();
-            if (databaseFolder.equals(this.currentDatabase)) {
+            if (databaseName.equals(this.currentDatabase)) {
                 this.currentDatabase = "";
-                return "[OK] Database " + databaseName + " dropped successfully";
             }
+            return "[OK] Database " + databaseName + " dropped successfully";
         }
         return "[ERROR] Invalid DROP target: " + tokens.get(1);
 

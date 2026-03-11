@@ -181,6 +181,49 @@ public class DBServerTests {
         dbFolder.delete();
     }
 
+    // Task 7: Test DROP TABLE and DROP DATABASE
+    @Test
+    public void testDropCommand() {
+        DBServer server = new DBServer();
+        String dbName = "test_drop_db";
+        String tableName = "test_drop_table";
+
+        server.handleCommand("CREATE DATABASE " + dbName + ";");
+        server.handleCommand("USE " + dbName + ";");
+        server.handleCommand("CREATE TABLE " + tableName + " (name, age);");
+
+        String response1 = server.handleCommand("DROP TABLE " + tableName + ";");
+        assertTrue(response1.startsWith("[OK]"), "DROP TABLE should return [OK]");
+
+        // Check physical file deletion
+        File tableFile = new File("databases" + File.separator + dbName + File.separator + tableName + ".tab");
+        assertFalse(tableFile.exists(), "The .tab file must be physically deleted from the disk");
+
+        String response2 = server.handleCommand("DROP DATABASE " + dbName + ";");
+        System.out.println(response2);
+        assertTrue(response2.startsWith("[OK]"), "DROP DATABASE should return [OK]");
+        File dbFolder = new File("databases" + File.separator + dbName);
+        assertFalse(dbFolder.exists(), "The database folder must be physically deleted from the disk");
+
+        // Test "Amnesia" (Checking if currentDatabase was cleared)
+        String response3 = server.handleCommand("CREATE TABLE new_table (id);");
+        assertTrue(response3.startsWith("[ERROR]"), "Creating a new table right after dropping the database must return [ERROR]");
+
+        // Teardown
+        if (tableFile.exists()) {
+            tableFile.delete();
+        }
+        if (dbFolder.exists()) {
+            File[] files = dbFolder.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    file.delete();
+                }
+            }
+            dbFolder.delete();
+        }
+    }
+
 
 }
 
