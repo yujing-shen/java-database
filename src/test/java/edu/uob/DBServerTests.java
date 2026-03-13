@@ -268,6 +268,50 @@ public class DBServerTests {
 
     }
 
+    @Test
+    public void testDeleteTable() {
+        DBServer server = new DBServer();
+        String dbName = "test_delete_db";
+        String tableName = "test_delete_table";
+
+        server.handleCommand("CREATE DATABASE " + dbName + ";");
+        server.handleCommand("USE " + dbName + ";");
+        server.handleCommand("CREATE TABLE " + tableName + " (name, age);");
+        server.handleCommand("INSERT INTO " + tableName + " VALUES ('Alice', 20);");
+        server.handleCommand("INSERT INTO " + tableName + " VALUES ('Bob', 25);");
+        server.handleCommand("INSERT INTO " + tableName + " VALUES ('Charlie', 20);");
+
+        String deleteResponse = server.handleCommand("DELETE FROM " + tableName + " WHERE name == 'Bob';");
+        assertTrue(deleteResponse.startsWith("[OK]"), "DELETE command should return [OK]");
+
+        String selectAfterDelete = server.handleCommand("SELECT * FROM " + tableName + ";");
+        assertFalse(selectAfterDelete.contains("Bob"), "Bob should be deleted");
+        assertTrue(selectAfterDelete.contains("Alice"), "Alice should still exist");
+        assertTrue(selectAfterDelete.contains("Charlie"), "Charlie should still exist");
+
+        String noWhereResponse = server.handleCommand("DELETE FROM " + tableName + ";");
+        assertTrue(noWhereResponse.startsWith("[ERROR]"), "DELETE without WHERE must return [ERROR]");
+
+        String wrongColResponse = server.handleCommand("DELETE FROM " + tableName + " WHERE height == '180';");
+        assertTrue(wrongColResponse.startsWith("[ERROR]"), "DELETE with non-existent column must return [ERROR]");
+
+        File tableFile = new File("databases" + File.separator + dbName + File.separator + tableName + ".tab");
+        if (tableFile.exists()) {
+            tableFile.delete();
+        }
+        File dbFolder = new File("databases" + File.separator + dbName);
+        if (dbFolder.exists()) {
+            File[] files = dbFolder.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    file.delete();
+                }
+            }
+            dbFolder.delete();
+        }
+
+    }
+
 
 }
 
