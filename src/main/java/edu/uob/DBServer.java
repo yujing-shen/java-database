@@ -59,6 +59,7 @@ public class DBServer {
                 case "SELECT": return handleSelect(tokens);
                 case "DROP"  : return handleDrop(tokens);
                 case "ALTER" : return handleAlter(tokens);
+
                 default:
                     return "[ERROR] Unknown command: " + firstWord;
             }

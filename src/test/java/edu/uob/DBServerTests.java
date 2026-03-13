@@ -223,6 +223,50 @@ public class DBServerTests {
             dbFolder.delete();
         }
     }
+    @Test
+    public void testAlterTable() {
+        DBServer server = new DBServer();
+        String dbName = "test_alter_db";
+        String tableName = "test_alter_table";
+        server.handleCommand("CREATE DATABASE " + dbName + ";");
+        server.handleCommand("USE " + dbName + ";");
+        server.handleCommand("CREATE TABLE " + tableName + " (name, age);");
+        server.handleCommand("INSERT INTO " + tableName + " VALUES ('Alice', 20);");
+
+        String addResponse = server.handleCommand("ALTER DATABASE " + tableName + " ADD email;");
+        assertTrue(addResponse.startsWith("[OK]"), "Add column should return [OK]");
+
+        String selectAfterAdd = server.handleCommand("SELECT * FROM " + tableName + ";");
+        assertTrue(selectAfterAdd.contains("email"), "The new column 'email' should appear in the header");
+
+        String dropResponse = server.handleCommand("ALTER TABLE " + tableName + " DROP age;");
+        assertTrue(dropResponse.startsWith("[OK]"), "DROP column should return [OK]");
+        String selectAfterDrop = server.handleCommand("SELECT * FROM " + tableName + ";");
+        assertFalse(selectAfterDrop.contains("age"), "The new column 'age' should be gone");
+        assertFalse(selectAfterDrop.contains("20"), "Alice's age data (20) should also be deleted");
+
+        String dropIdResponse = server.handleCommand("ALTER TABLE " + tableName + " DROP id;");
+        assertTrue(dropIdResponse.startsWith("[ERROR]"), "Dropping 'id' should return [ERROR]");
+
+        String dropFakeResponse = server.handleCommand("ALTER TABLE " + tableName + " DROP fake_column;");
+        assertTrue(dropFakeResponse.startsWith("[ERROR]"), "Adding an existing column must return [ERROR]");
+
+        File tableFile = new File("databases" + File.separator + dbName + File.separator + tableName + ".tab");
+        if (tableFile.exists()) {
+            tableFile.delete();
+        }
+        File dbFolder = new File("databases" + File.separator + dbName);
+        if (dbFolder.exists()) {
+            File[] files = dbFolder.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    file.delete();
+                }
+            }
+            dbFolder.delete();
+        }
+
+    }
 
 
 }
