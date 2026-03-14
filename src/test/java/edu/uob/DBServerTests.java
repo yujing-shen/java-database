@@ -312,6 +312,52 @@ public class DBServerTests {
 
     }
 
+    // Test UPDATE (with WHERE)
+    @Test
+    public void testUpdateCommand() {
+        DBServer server = new DBServer();
+        String dbName = "test_update_db";
+        String tableName = "test_update_table";
+
+        server.handleCommand("CREATE DATABASE " + dbName + ";");
+        server.handleCommand("USE " + dbName + ";");
+        server.handleCommand("CREATE TABLE " + tableName + " (name , age);");
+        server.handleCommand("INSERT INTO " + tableName + " VALUES ('Alice', 20);");
+        server.handleCommand("INSERT INTO " + tableName + " VALUES ('Bob', 25);");
+
+        String updateResponse = server.handleCommand("UPDATE " + tableName + " SET age = 26 WHERE name == 'Alice';");
+        assertTrue(updateResponse.startsWith("[OK]"), "Update command should return [OK]");
+
+        String selectAfterUpdate = server.handleCommand("SELECT * FROM " + tableName + ";");
+        assertTrue(selectAfterUpdate.contains("26"), "Alice's age should be updated to 26");
+        assertFalse(selectAfterUpdate.contains("'Alice'\t20"), "Alice's old age 20 should be gone");
+        assertTrue(selectAfterUpdate.contains("'Bob'\t25"), "Bob's age should remain unaffected");
+
+        String updateIdResponse = server.handleCommand("UPDATE " + tableName + " SET id = 99 WHERE name == 'Alice';");
+        assertTrue(updateIdResponse.startsWith("[ERROR]"), "Updating 'id' column must return [ERROR]");
+
+        String wrongColResponse = server.handleCommand("UPDATE " + tableName + " SET fake_col = 100 WHERE name == 'Alice';");
+        assertTrue(wrongColResponse.startsWith("[ERROR]"), "Updating a non-existent column must return [ERROR]");
+
+        String wrongConditionResponse = server.handleCommand("UPDATE " + tableName + " SET age = 30 WHERE fake_name == 'Alice';");
+        assertTrue(wrongConditionResponse.startsWith("[ERROR]"), "Using a non-existent condition column must return [ERROR]");
+
+        File tableFile = new File("databases" + File.separator + dbName + "." + tableName + ".tab");
+        if (tableFile.exists()) {
+            tableFile.delete();
+        }
+        File dbFolder = new File("databases" + File.separator + dbName);
+        if (dbFolder.exists()) {
+            File[] files = dbFolder.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    file.delete();
+                }
+            }
+            dbFolder.delete();
+        }
+    }
+
 
 }
 
