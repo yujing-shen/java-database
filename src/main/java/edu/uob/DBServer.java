@@ -518,4 +518,35 @@ public class DBServer {
             }
         }
     }
+
+    private boolean checkCondition(Row row, Table table, String columnName, String operator, String targetValue) {
+        int colIndex = table.getColumnNames().indexOf(columnName);
+        if (colIndex == -1) {
+            throw new RuntimeException("[ERROR] Column " + columnName + " does not exist");
+        }
+        String cellValue = row.getValues().get(colIndex).replace("'","").trim();
+        if (operator.equals("==")) {
+            return cellValue.equals(targetValue);
+        } else if (operator.equals("!=")) {
+            return !cellValue.equals(targetValue);
+        } else if (operator.equals(">") || operator.equals(">=") || operator.equals("<") || operator.equals("<=")) {
+            try {
+                float cellNum = Float.parseFloat(cellValue);
+                float targetNum = Float.parseFloat(targetValue);
+                switch (operator) {
+                    case ">": return cellNum > targetNum;
+                    case "<": return cellNum < targetNum;
+                    case ">=": return cellNum >= targetNum;
+                    case "<=": return cellNum <= targetNum;
+                }
+            }catch (NumberFormatException e) {
+                throw new RuntimeException("[ERROR] Cannot use math operators on non-number values");
+            }
+        } else if (operator.equalsIgnoreCase("LIKE")) {
+            return cellValue.contains(targetValue);
+        }
+
+        throw new RuntimeException("[ERROR] Unknown operator: " + operator);
+
+    }
 }
