@@ -367,6 +367,56 @@ public class DBServerTests {
         }
     }
 
+    @Test
+    public void testSelectCommand() {
+        DBServer server = new DBServer();
+        String dbName = "test_select_db";
+        String tableName = "test_select_table";
+        server.handleCommand("CREATE DATABASE " + dbName + ";");
+        server.handleCommand("USE " + dbName + ";");
+        server.handleCommand("CREATE TABLE " + tableName + " (name, age, pass);");
+        server.handleCommand("INSERT INTO " + tableName + " VALUES ('Alice', 20, 'YES');");
+        server.handleCommand("INSERT INTO " + tableName + " VALUES ('Bob', 25, 'NO');");
+        server.handleCommand("INSERT INTO " + tableName + " VALUES ('Charlie', 22, 'YES');");
+
+        String selectAll = server.handleCommand("SELECT * FROM " + tableName + ";");
+        assertTrue(selectAll.contains("Alice"), "Should contain Alice");
+        assertTrue(selectAll.contains("Bob"), "Should contain Bob");
+        assertTrue(selectAll.contains("25"), "Should contain Bob's age");
+
+        String selectWhere = server.handleCommand("SELECT * FROM " + tableName + " Where age > 21;");
+        assertTrue(selectWhere.contains("Bob"), "Should contain Bob (>21)");
+        assertTrue(selectWhere.contains("Charlie"), "Should contain Charlie (>21)");
+        assertFalse(selectWhere.contains("Alice"), "Should NOT contain Alice (20 is not > 21)");
+
+        String selectColsWhere = server.handleCommand("SELECT name FROM " + tableName + " Where pass == 'YES';");
+        assertTrue(selectColsWhere.contains("Alice"), "Alice passes");
+        assertFalse(selectColsWhere.contains("Bob"), "Bob did not pass");
+        assertTrue(selectColsWhere.contains("Charlie"), "Charlie passes");
+        assertFalse(selectColsWhere.contains("20"), "Should NOT contain age data because we only selected 'name'!");
+
+        String errorNoCol = server.handleCommand("SELECT fake_col FROM " + tableName + ";");
+        assertTrue(errorNoCol.startsWith("[ERROR]"), "Erroring 'fake_col' column must return [ERROR]");
+
+        String errorBadWhere = server.handleCommand("SELECT * FROM " + tableName + " WHERE height == '180';");
+        assertTrue(errorBadWhere.startsWith("[ERROR]"), "WHERE with fake column should error");
+
+        File tableFile = new File("databases" + File.separator + dbName + "." + tableName + ".tab");
+        if (tableFile.exists()) {
+            tableFile.delete();
+        }
+        File dbFolder = new File("databases" + File.separator + dbName);
+        if (dbFolder.exists()) {
+            File[] files = dbFolder.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    file.delete();
+                }
+            }
+            dbFolder.delete();
+        }
+    }
+
 
 }
 
