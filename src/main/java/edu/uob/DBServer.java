@@ -80,7 +80,7 @@ public class DBServer {
 
         if (dbFolder.exists() && dbFolder.isDirectory()) {
             this.currentDatabase = dbName;
-            return "[OK] Switched to databse " + dbName;
+            return "[OK]";
         } else {
             return "[ERROR] Database " + dbName + " does not exist or is not a directory";
         }
@@ -99,7 +99,7 @@ public class DBServer {
                 return "[ERROR] Database already exists";
             } else {
                 newDbFolder.mkdirs();
-                return "[OK] DATABASE " + dbName + " created successfully";
+                return "[OK]";
             }
         }
         else if (secondWord.equals("TABLE")) {
@@ -135,7 +135,7 @@ public class DBServer {
             try {
                 String dbFolderPath = this.storageFolderPath + File.separator + this.currentDatabase;
                 newTable.saveToFIle(dbFolderPath);
-                return "[OK] Table " + tableName + " created successfully";
+                return "[OK]";
             } catch (IOException e) {
                 return "[ERROR] Failed to create table file: " + e.getMessage();
             }
@@ -193,7 +193,7 @@ public class DBServer {
 
             String dbFolderPath = this.storageFolderPath + File.separator + this.currentDatabase;
             myTable.saveToFIle(dbFolderPath);
-            return "[OK] Table " + tableName + " inserted successfully";
+            return "[OK]";
 
         } catch (Exception e) {
             return "[ERROR] Failed to insert table: " + e.getMessage();
@@ -317,7 +317,7 @@ public class DBServer {
                 return "[ERROR] Table " + tableName + " does not exist";
             } else {
                 tableFile.delete();
-                return "[OK] Table " + tableName + " dropped successfully";
+                return "[OK]";
             }
         } else if (targetObjectName.equals("DATABASE")) {
             String databaseName = tokens.get(2);
@@ -337,7 +337,7 @@ public class DBServer {
             if (databaseName.equals(this.currentDatabase)) {
                 this.currentDatabase = "";
             }
-            return "[OK] Database " + databaseName + " dropped successfully";
+            return "[OK]";
         }
         return "[ERROR] Invalid DROP target: " + tokens.get(1);
 
@@ -376,7 +376,7 @@ public class DBServer {
             }
             myTable.saveToFIle(this.storageFolderPath + File.separator + this.currentDatabase);
 
-            return "[OK] Record(s) deleted successfully from table " + tableName;
+            return "[OK]";
         } catch (Exception e) {
             return "[ERROR] Failed to delete: " + e.getMessage();
         }
@@ -469,7 +469,7 @@ public class DBServer {
             }
             String dbFolderPath = this.storageFolderPath + File.separator + this.currentDatabase;
             myTable.saveToFIle(dbFolderPath);
-            return "[OK] Table " + tableName + " altered successfully";
+            return "[OK]";
         } catch (IOException e) {
             return "[ERROR] Failed to alter table: " + e.getMessage();
         }
@@ -494,16 +494,16 @@ public class DBServer {
             if (!tokens.get(6).equalsIgnoreCase("WHERE")) {
                 return "[ERROR] Invalid UPDATE command with no WHERE";
             }
-            String updateColunmn = tokens.get(3);
+            String updateColumn = tokens.get(3);
             String newValue = tokens.get(5).replace("'","").trim();
             String conditionColumn = tokens.get(7);
             String operator = tokens.get(8);
             String conditionValue = tokens.get(9).replace("'","").trim();
 
-            int updateIndex = myTable.getColumnNames().indexOf(updateColunmn);
+            int updateIndex = myTable.getColumnNames().indexOf(updateColumn);
             if (updateIndex == -1) {
-                return "[ERROR] Column " + updateColunmn + " does not exist";
-            } else if (updateIndex == 0 || updateColunmn.equalsIgnoreCase("id")) {
+                return "[ERROR] Column " + updateColumn + " does not exist";
+            } else if (updateIndex == 0 || updateColumn.equalsIgnoreCase("id")) {
                 return "[ERROR] Column Id cannot be updated" ;
             }
 
@@ -517,7 +517,7 @@ public class DBServer {
                 }
             }
             myTable.saveToFIle(this.storageFolderPath + File.separator + this.currentDatabase);
-            return "[OK] Table " + tableName + " updated successfully";
+            return "[OK]";
         } catch (IOException e) {
             return "[ERROR] Failed to update table: " + e.getMessage();
         }
@@ -555,6 +555,10 @@ public class DBServer {
             if (col2Index == -1 ) {
                 return "[ERROR] Column " + col2Name + " does not exist in " + table2Name;
             }
+
+            int t1IdIndex = table1.getColumnNames().indexOf("id");
+            int t2IdIndex = table2.getColumnNames().indexOf("id");
+
             StringBuilder result = new StringBuilder("[OK]\n");
 
             for (String c1 : table1.getColumnNames()) {
