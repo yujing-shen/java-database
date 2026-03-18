@@ -6,6 +6,7 @@ import java.net.Socket;
 import java.nio.file.Paths;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /** This class implements the DB server. */
@@ -42,13 +43,21 @@ public class DBServer {
     */
     public String handleCommand(String command) {
         // TODO implement your server logic here
+        String trimmedCommand = command.trim();
+        if (trimmedCommand.isEmpty()) {
+            return "[ERROR] Empty command";
+        }
+        if (!trimmedCommand.endsWith(";")) {
+            return "[ERROR] Invalid syntax: Command must end with a semicolon (;)";
+        }
         try {
             Tokenizer tokenizer = new Tokenizer();
-            List<String> tokens = tokenizer.tokenize(command);
+            List<String> tokens = tokenizer.tokenize(trimmedCommand);
 
             if (tokens.isEmpty()) {
                 return "[ERROR] Empty command";
             }
+
 
             String firstWord = tokens.get(0).toUpperCase();
 
@@ -454,7 +463,7 @@ public class DBServer {
                 }
                 myTable.addColumnName(columnName);
                 for (Row row : myTable.getRows()) {
-                    row.addValue("");
+                    row.addValue("NULL");
                 }
 
             }else if (action.equals("DROP")) {
