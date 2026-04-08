@@ -772,7 +772,17 @@ public class DBServer {
         }
     }
 
+    /**
+     * Loads a table schema and its data from the corresponding .tab file on disk.
+     * Utilizes a try-with-resources block to guarantee the Scanner is safely closed,
+     * preventing memory leaks and I/O file lock issues.
+     *
+     * @param tableName The name of the table to be loaded.
+     * @return A fully populated Table object containing columns and rows.
+     * @throws RuntimeException if no database is selected, the file is missing, or an I/O error occurs.
+     */
     private Table loadTableFromFile(String tableName) {
+        // Guard clause: Ensure context is valid before executing file I/O
         if (this.currentDatabase == null || this.currentDatabase.isEmpty()) {
             throw new RuntimeException("[ERROR] No database selected. Cannot load table.");
         }
@@ -784,22 +794,27 @@ public class DBServer {
             throw new RuntimeException("[ERROR] Table " + tableName + " does not exist.");
         }
 
-        try {
+        // 🌟 OOP Best Practice: try-with-resources ensures the Scanner is automatically closed
+        // after the try block executes completely, avoiding the infamous "Scanner closed" bug.
+        try (Scanner scanner = new Scanner(file)) {
             Table loadedTable = new Table(tableName);
-            Scanner scanner = new Scanner(file);
 
-            // Phase 1: Parse Header
+            // Phase 1: Parse the Header Row
             if (scanner.hasNextLine()) {
                 String headerLine = scanner.nextLine();
+                // Use a limit of -1 to preserve trailing empty cells if any exist
                 String[] headers = headerLine.split("\t", -1);
                 loadedTable.setColumnNames(new ArrayList<>(Arrays.asList(headers)));
             }
 
             int maxIdFound = 0;
+
             // Phase 2: Parse Data Rows
             while (scanner.hasNextLine()) {
                 String dataLine = scanner.nextLine();
-                if (dataLine.trim().isEmpty()) continue; // Skip empty lines
+
+                // Skip completely empty lines to prevent blank ghost rows
+                if (dataLine.trim().isEmpty()) continue;
 
                 String[] values = dataLine.split("\t", -1);
                 Row newRow = new Row();
@@ -808,24 +823,27 @@ public class DBServer {
                 }
                 loadedTable.addRow(newRow);
 
-                // Phase 3 : ID Recalibration tracking
+                // Phase 3: ID Recalibration Tracking
+                // Dynamically track the highest ID currently present in the database.
+                // This prevents primary key collisions during future INSERT operations.
                 if (values.length > 0) {
                     try {
                         int currentId = Integer.parseInt(values[0]);
-                         if (currentId > maxIdFound) {
-                             maxIdFound = currentId;
-                         }
+                        if (currentId > maxIdFound) {
+                            maxIdFound = currentId;
+                        }
                     } catch (NumberFormatException e) {
-                        // Ignore if the first column is not a numeric ID
+                        // Safely ignore if the first column happens to be non-numeric
                     }
                 }
-                scanner.close();
+            } // End of file scanning loop
 
-                // Calibrate the ID generator to avoid collisions with existing data
-                loadedTable.updateNextAvailableId(maxIdFound);
-            }
+            // CRITICAL: Calibrate the ID generator ONLY ONCE after the entire file is parsed.
+            loadedTable.updateNextAvailableId(maxIdFound);
+
             return loadedTable;
-        }catch (IOException e) {
+
+        } catch (IOException e) {
             throw new RuntimeException("[ERROR] Failed to read table file: " + e.getMessage());
         }
     }

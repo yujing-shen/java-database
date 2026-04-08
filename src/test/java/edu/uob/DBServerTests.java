@@ -159,6 +159,7 @@ public class DBServerTests {
 
         // 2. Test SELECT * (Should return all columns and all data)
         String response1 = server.handleCommand("SELECT * FROM " + tableName + ";");
+        // System.out.println("🚨 侦探日志 - SELECT失败的真实原因: " + response1);
         assertTrue(response1.startsWith("[OK]"), "Select * should return [OK]");
         assertTrue(response1.contains("Alice") && response1.contains("20"), "Result should return Alice's data." );
         assertTrue(response1.contains("Bob") && response1.contains("22"), "Result should return Alice's data." );
