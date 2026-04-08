@@ -129,6 +129,7 @@ public class DBServerTests {
 
         String insertQuery = "INSERT INTO " + tableName + " VALUES ('Bob', 21, 'bob@bristol.ac.uk');";
         String response1 = server.handleCommand(insertQuery);
+        //System.out.println("🚨 侦探日志 - 插入失败的真实原因: " + response1);
         assertTrue(response1.startsWith("[OK]"), "Inserting into table should return [OK]");
 
         String wrongQuery = "INSERT INTO " + tableName + " ('Alice', 22, 'alice@bristol.ac.uk');";

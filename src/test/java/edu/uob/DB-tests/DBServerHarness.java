@@ -1,6 +1,4 @@
-package edu.uob.DB;
-
-import edu.uob.DBServer;
+package edu.uob;
 
 import java.io.IOException;
 import java.time.Duration;

@@ -96,207 +96,223 @@ public class DBServer {
             return "[ERROR] Database " + dbName + " does not exist or is not a directory";
         }
     }
-    private String handleCreate(List<String> tokens) {
-        if (tokens.size() < 3) {
-            return "[ERROR] Invalid CREATE command";
-        }
 
-        String secondWord = tokens.get(1).toUpperCase();
-        if (secondWord.equals("DATABASE")) {
-            String dbName = tokens.get(2);
-            java.io.File newDbFolder = new java.io.File(storageFolderPath + File.separator + dbName);
-
-            if (newDbFolder.exists()) {
-                return "[ERROR] Database already exists";
-            } else {
-                newDbFolder.mkdirs();
-                return "[OK]";
-            }
-        }
-        else if (secondWord.equals("TABLE")) {
-            if (this.currentDatabase == null || this.currentDatabase.isEmpty()) {
-                return "[ERROR] You must USE a database first";
-            }
-            String tableName = tokens.get(2);
-
-            String tablePath = this.storageFolderPath + File.separator + this.currentDatabase + File.separator + tableName + ".tab";
-            File tableFile = new File(tablePath);
-            if (tableFile.exists()) {
-                return "[ERROR] Table " + tableName + "already exists";
-            }
-            Table newTable = new Table(tableName);
-            newTable.addColumnName("id");
-
-            boolean insideBrackets = false;
-            for (int i = 3; i < tokens.size(); i++) {
-                String token = tokens.get(i);
-                if (token.equals("(")) {
-                    insideBrackets = true;
-                    continue;
-                }
-                if (token.equals(")")) {
-                    break;
-                }
-                if (insideBrackets) {
-                    if (!token.equals(",")) {
-                        newTable.addColumnName(token);
-                    }
-                }
-            }
-            try {
-                String dbFolderPath = this.storageFolderPath + File.separator + this.currentDatabase;
-                newTable.saveToFile(dbFolderPath);
-                return "[OK]";
-            } catch (IOException e) {
-                return "[ERROR] Failed to create table file: " + e.getMessage();
-            }
-        }
-        else {
-            return "[ERROR] Invalid CREATE command";
-        }
-
-    }
-
-    /** Handles the INSERT INTO command to add a new record to a table.
-     * Utilizes the Table's internal auto-increment ID generator to ensure
-     * primary key uniqueness and delegates I/O to the persistence helper,
+    /**
+     * Handles the CREATE command (DATABASE or TABLE).
+     * Automatically prepends the mandatory 'id' column to all new tables
+     * to ensure compatibility with standard relational operations (e.g., JOIN, INSERT).
      *
      * @param tokens The tokenized SQL command list.
      * @return A success message [OK] or an error string.
      */
+    private String handleCreate(List<String> tokens) {
+        if (tokens.size() < 3) return "[ERROR] Invalid CREATE syntax.";
+        String createType = tokens.get(1).toUpperCase();
+        String targetName = tokens.get(2);
 
-    private String handleInsert(List<String> tokens) {
-        if (this.currentDatabase == null || this.currentDatabase.isEmpty()) {
-            return "[ERROR] You must USE a database first";
+        try {
+            if (createType.equals("DATABASE")) {
+                // Ensure the target database directory exists
+                File dbFolder = new File(this.storageFolderPath + File.separator + targetName);
+                if (!dbFolder.exists()) {
+                    dbFolder.mkdirs();
+                }
+                return "[OK]\n";
+
+            } else if (createType.equals("TABLE")) {
+                if (this.currentDatabase == null || this.currentDatabase.isEmpty()) {
+                    return "[ERROR] No database selected. Please USE a database first.";
+                }
+
+                // Check for table existence to prevent accidental overwrites
+                File tableFile = new File(this.storageFolderPath + File.separator + this.currentDatabase + File.separator + targetName + ".tab");
+                if (tableFile.exists()) return "[ERROR] Table " + targetName + " already exists.";
+
+                Table newTable = new Table(targetName);
+
+                // CRITICAL FIX: Automatically prepend the mandatory 'id' column!
+                // This ensures all inserted rows have a primary key to match against.
+                newTable.addColumn("id");
+
+                // Parse custom column names enclosed in parentheses, e.g., (name, age, email)
+                int openBracket = tokens.indexOf("(");
+                int closeBracket = tokens.indexOf(")");
+
+                if (openBracket != -1 && closeBracket != -1 && openBracket < closeBracket) {
+                    for (int i = openBracket + 1; i < closeBracket; i++) {
+                        String colName = tokens.get(i);
+                        if (!colName.equals(",")) {
+                            newTable.addColumn(colName);
+                        }
+                    }
+                }
+
+                // Persist the new table schema to disk
+                saveTableToFile(newTable);
+                return "[OK]\n";
+            }
+
+            return "[ERROR] Unknown CREATE target. Expected DATABASE or TABLE.";
+
+        } catch (Exception e) {
+            return "[ERROR] Failed to execute CREATE: " + e.getMessage();
         }
+    }
 
-        if (tokens.size() < 7 ||
-                !tokens.get(0).equals("INSERT") ||
-                !tokens.get(1).equals("INTO") ||
-                !tokens.get(3).equals("VALUES")
-        ) {
-            return "[ERROR] Invalid INSERT command";
+    /**
+     * Handles the INSERT INTO command to add a new record to a table.
+     * Utilizes the Table's internal auto-increment ID generator to ensure
+     * primary key uniqueness and delegates I/O to the persistence helper.
+     *
+     * @param tokens The tokenized SQL command list.
+     * @return A success message [OK] or an error string.
+     */
+    private String handleInsert(List<String> tokens) {
+        // 1. Guard Clauses for syntax and context validation
+        if (tokens.size() < 7 || !tokens.get(1).equalsIgnoreCase("INTO") || !tokens.contains("VALUES")) {
+            return "[ERROR] Invalid INSERT command syntax.";
+        }
+        if (this.currentDatabase == null || this.currentDatabase.isEmpty()) {
+            return "[ERROR] No database selected. You must USE a database first.";
         }
 
         try {
             String tableName = tokens.get(2);
             Table myTable = loadTableFromFile(tableName);
 
-            // Extract values inside the parentheses: VALUES ( val1, val2 )
-            int valuesIndex = tokens.indexOf("VALUES");
+            // 2. Safely extract values between parentheses: ( val1 , val2 )
+            int openBracket = tokens.indexOf("(");
+            int closeBracket = tokens.indexOf(")");
+
+            if (openBracket == -1 || closeBracket == -1 || openBracket >= closeBracket) {
+                return "[ERROR] Missing or malformed parentheses in INSERT command.";
+            }
+
             List<String> valuesToInsert = new ArrayList<>();
-            for (int i = valuesIndex + 2; i < tokens.size() - 1; i++) {
-                String token = tokens.get(i);
-                if (!token.equals(",")) {
-                    valuesToInsert.add(token.replace("'","").trim());
+            // Only loop STRICTLY between the brackets to prevent Tokenizer artifacts
+            for (int i = openBracket + 1; i < closeBracket; i++) {
+                String token = tokens.get(i).trim();
+
+                // Skip commas AND any stray closing brackets or semicolons
+                // that might have snuck in due to the Tokenizer implementation
+                if (!token.equals(",") && !token.equals(")") && !token.equals(");")) {
+                    // Remove string literal quotes
+                    valuesToInsert.add(token.replace("'", ""));
                 }
             }
 
-            // Schema Validation: Check if value count matches column count (excluding ID)
-            // Assuming the first column is always the auto-generated 'id'
-            if (valuesToInsert.size() != myTable.getColumnNames().size() - 1 ) {
-                return "[ERROR] Number of values does not match the number of columns.";
+            // 3. Schema Validation: Dynamic calculation of expected columns
+            int expectedValueCount = myTable.getColumnNames().size();
+            // Since we mandate 'id' as the first column, we expect one less value from the user
+            if (expectedValueCount > 0 && myTable.getColumnNames().get(0).equalsIgnoreCase("id")) {
+                expectedValueCount -= 1;
             }
 
-            // Create new Row and use OOP to generate ID
-            Row newRow = new Row();
-            newRow.addValue(String.valueOf(myTable.getNextId()));
+            if (valuesToInsert.size() != expectedValueCount) {
+                return "[ERROR] Value count mismatch! Expected " + expectedValueCount +
+                        " user-provided values, but got " + valuesToInsert.size() +
+                        ". Values extracted: " + String.join(", ", valuesToInsert);
+            }
 
-            for (String val :  valuesToInsert) {
+            // 4. Create new Row and use OOP Magic to generate ID!
+            Row newRow = new Row();
+            newRow.addValue(String.valueOf(myTable.getNextId())); // The magic auto-increment ID
+
+            for (String val : valuesToInsert) {
                 newRow.addValue(val);
             }
 
-            // Update domain model and persist to disk
+            // 5. Update domain model and persist to disk
             myTable.addRow(newRow);
             saveTableToFile(myTable);
 
-            return "[OK]";
+            return "[OK]\n";
+
         } catch (RuntimeException e) {
             return e.getMessage();
         } catch (Exception e) {
-            return "[ERROR] Failed to insert table: " + e.getMessage();
+            return "[ERROR] Failed to insert data: " + e.getMessage();
         }
-
-
     }
 
-    // Handles the SELECT command to query and filter data from a specific table.
+    /**
+     * Handles the SELECT command to query and filter data from a table.
+     * Optimized to cache column indices prior to row iteration, achieving O(N)
+     * time complexity instad of O(N*M), and delegates validation to the Table entity.
+     *
+     * @param tokens The tokenized SQL command list.
+     * @return A formatted string of the queried data or an error message.
+     */
     private String handleSelect(List<String> tokens) {
-        if (tokens.size() < 4) return "[ERROR] Invalid SELECT command";
-        if (this.currentDatabase == null || this.currentDatabase.isEmpty())
+        if (tokens.size() < 4) return "[ERROR] Invalid SELECT command length";
+        if (this.currentDatabase == null || this.currentDatabase.isEmpty()) {
             return "[ERROR] You must USE a database first";
-
-        // Locate the FROM keyword using native list methods to avoid manual iteration
-        int fromIndex = tokens.indexOf("FROM");
-        if (fromIndex == -1 || fromIndex + 1 >= tokens.size()) return "[ERROR] Invalid SELECT command";
-
-        // Extract target columns for the projection phase (fetching requested fields)
-        List<String> targetColumns = new ArrayList<>();
-        for (int i = 1; i < fromIndex; i++) {
-            if (!tokens.get(i).equals(",")) targetColumns.add(tokens.get(i));
         }
 
-        // Extract condition tokens for the WHERE clause (selection phase)
-        boolean hasWhere = tokens.contains("WHERE");
-        List<String> conditionTokens = new ArrayList<>();
-        if (hasWhere) {
-            int whereIndex = tokens.indexOf("WHERE");
-            for (int i = whereIndex + 1; i < tokens.size(); i++) {
-                String t = tokens.get(i).replace(";","");
-                if (!t.isEmpty())  conditionTokens.add(t);
-            }
-        }
-
-        String tableName = tokens.get(fromIndex + 1);
         try {
-            // Load the table object
+            // 1. Locate FROM and extract table name
+            int fromIndex = tokens.indexOf("FROM");
+            if (fromIndex == -1 || fromIndex + 1 >= tokens.size()) return "[ERROR] Missing FROM keyword or table name.";
+
+            String tableName = tokens.get(fromIndex+1).replace(";","");
             Table myTable = loadTableFromFile(tableName);
 
-            // Handle wildcard character for selecting all columns
-            if (targetColumns.contains("*")) {
-                targetColumns = new ArrayList<>(myTable.getColumnNames());
+            // 2. Extract target columns (Projection phase)
+            List<String> targetColumns = new ArrayList<>();
+            for (int i = 1; i < fromIndex; i++) {
+                String token = tokens.get(i);
+                if (!token.equals(",")) targetColumns.add(token);
             }
 
-            StringBuilder result = new StringBuilder();
-            result.append("[OK]").append("\n");
+            // Handle wildcard '*' for all columns
+            if (targetColumns.contains("*")) targetColumns = myTable.getColumnNames();
 
-            // Validate and append header columns
-            for (String column : targetColumns) {
-                if (!myTable.getColumnNames().contains(column)) {
-                    return "[ERROR] Column " + column + " does not exist";
+            // OOP Magic & Performance Optimization: Cache column indices!
+            // This prevents searching for the column name in every single row iteration.
+            List<Integer> targetIndices = new ArrayList<>();
+            for (String col : targetColumns) {
+                // This will automatically throw an exception if the column does not exist
+                targetIndices.add(myTable.getColumnIndexOrThrow(col));
+            }
+
+            // 3. Extract WHERE tokens (Selection phase)
+            int whereIndex = tokens.indexOf("WHERE");
+            boolean hasWhere = (whereIndex != -1);
+            List<String> conditionTokens = new ArrayList<>();
+
+            if (hasWhere) {
+                for (int i = whereIndex + 1; i < tokens.size(); i++) {
+                    String t = tokens.get(i).replace(";","");
+                    if (!t.isEmpty()) conditionTokens.add(t);
                 }
-                result.append(column).append("\t");
             }
-            result.append("\n");
 
-            List<String> columnNames = myTable.getColumnNames();
+            // 4. Build the Output Header
+            StringBuilder result = new StringBuilder("[OK]\n");
+            result.append(String.join("\t", targetColumns)).append("\n");
 
-            // Iterate through rows and evaluate conditions
+            // 5. Iterate through rows and evaluate conditions
             for (Row row : myTable.getRows()) {
-                boolean shouldPrint = true;
+                // Utilize the elegant short-circuit logic we buil earlier.
+                boolean shouldPrint = !hasWhere || evaluateCondition(row, myTable, conditionTokens);
 
-                if (hasWhere) {
-                    try {
-                        // Delegate logical evaluation to the AST parser
-                        shouldPrint = evaluateCondition(row, myTable, conditionTokens);
-                    } catch (RuntimeException e) {
-                        return e.getMessage();
-                    }
-                }
-
-                // Append data only if it satisfies the WHERE clause
                 if (shouldPrint) {
-                    for (String col : targetColumns) {
-                        int index = columnNames.indexOf(col);
-                        result.append(row.getValueAt(index).replace("'","")).append("\t");
+                    // Use the cached indices directly for O(1) instantaneous access
+                    for (int index : targetIndices) {
+                        result.append(row.getCleanValueAt(index)).append("\t");
                     }
                     result.append("\n");
                 }
             }
-            return result.toString();
 
+            return result.toString();
+            
+        } catch (RuntimeException e) {
+            // Catches getColumnIndexOrThrow and evaluateCondition errors
+            return e.getMessage();
         } catch (Exception e) {
-            return "[ERROR] Failed to insert table: " + e.getMessage();
+            // Fixed the copy-paste bug: changed "insert" to "query"
+            return "[ERROR] Failed to query table: " + e.getMessage();
         }
     }
 

@@ -14,7 +14,7 @@ public class TokenizerTests {
     public void testBasicQuery() {
         Tokenizer tokenizer = new Tokenizer();
         String query = "SELECT * FROM people;";
-        List<String> tokens = tokenizer.tokenize(query);
+        List<String> tokens = tokenizer.parseTokens(query);
 
         List<String> expectedTokens = Arrays.asList("SELECT", "*", "FROM", "people",";");
         assertEquals(expectedTokens, tokens, "Failed Query");
@@ -25,7 +25,7 @@ public class TokenizerTests {
     public void testExtraSpaces() {
         Tokenizer tokenizer = new Tokenizer();
         String query = "         SELECT   *   FROM       people  ;   ";
-        List<String> tokens = tokenizer.tokenize(query);
+        List<String> tokens = tokenizer.parseTokens(query);
         List<String> expectedTokens = Arrays.asList("SELECT", "*", "FROM", "people",";");
         assertEquals(expectedTokens, tokens, "Extra spaces should be ignored");
     }
@@ -34,7 +34,7 @@ public class TokenizerTests {
     public void testComplexQueryQuotesAndSymbols() {
         Tokenizer tokenizer = new Tokenizer();
         String query = "INSERT INTO marks (name, mark) VALUES ('Steve Jobs', 65);";
-        List<String> tokens = tokenizer.tokenize(query);
+        List<String> tokens = tokenizer.parseTokens(query);
 
         List<String> expected = Arrays.asList(
                 "INSERT", "INTO", "marks", "(", "name", ",", "mark", ")",

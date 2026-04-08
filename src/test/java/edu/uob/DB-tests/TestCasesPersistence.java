@@ -1,4 +1,4 @@
-package edu.uob.DB;
+package edu.uob;
 
 import org.junit.jupiter.api.Test;
 

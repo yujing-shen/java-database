@@ -1,6 +1,5 @@
-package edu.uob.DB;
+package edu.uob;
 
-import edu.uob.DBServerHarness;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
