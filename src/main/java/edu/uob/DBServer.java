@@ -238,7 +238,8 @@ public class DBServer {
     /**
      * Handles the SELECT command to query and filter data from a table.
      * Optimized to cache column indices prior to row iteration, achieving O(N)
-     * time complexity instad of O(N*M), and delegates validation to the Table entity.
+     * time complexity instead of O(N*M), and delegates validation to the Table entity.
+     * Supports case-insensitive SQL keywords.
      *
      * @param tokens The tokenized SQL command list.
      * @return A formatted string of the queried data or an error message.
@@ -250,11 +251,17 @@ public class DBServer {
         }
 
         try {
-            // 1. Locate FROM and extract table name
-            int fromIndex = tokens.indexOf("FROM");
+            // 1. Locate FROM (Case-Insensitive) and extract table name
+            int fromIndex = -1;
+            for (int i = 0; i < tokens.size(); i++) {
+                if (tokens.get(i).equalsIgnoreCase("FROM")) {
+                    fromIndex = i;
+                    break;
+                }
+            }
             if (fromIndex == -1 || fromIndex + 1 >= tokens.size()) return "[ERROR] Missing FROM keyword or table name.";
 
-            String tableName = tokens.get(fromIndex+1).replace(";","");
+            String tableName = tokens.get(fromIndex + 1).replace(";", "");
             Table myTable = loadTableFromFile(tableName);
 
             // 2. Extract target columns (Projection phase)
@@ -268,21 +275,26 @@ public class DBServer {
             if (targetColumns.contains("*")) targetColumns = myTable.getColumnNames();
 
             // OOP Magic & Performance Optimization: Cache column indices!
-            // This prevents searching for the column name in every single row iteration.
             List<Integer> targetIndices = new ArrayList<>();
             for (String col : targetColumns) {
-                // This will automatically throw an exception if the column does not exist
                 targetIndices.add(myTable.getColumnIndexOrThrow(col));
             }
 
-            // 3. Extract WHERE tokens (Selection phase)
-            int whereIndex = tokens.indexOf("WHERE");
+            // 3. Extract WHERE tokens (Selection phase - Case-Insensitive)
+            int whereIndex = -1;
+            for (int i = 0; i < tokens.size(); i++) {
+                if (tokens.get(i).equalsIgnoreCase("WHERE")) {
+                    whereIndex = i;
+                    break;
+                }
+            }
+
             boolean hasWhere = (whereIndex != -1);
             List<String> conditionTokens = new ArrayList<>();
 
             if (hasWhere) {
                 for (int i = whereIndex + 1; i < tokens.size(); i++) {
-                    String t = tokens.get(i).replace(";","");
+                    String t = tokens.get(i).replace(";", "");
                     if (!t.isEmpty()) conditionTokens.add(t);
                 }
             }
@@ -293,7 +305,7 @@ public class DBServer {
 
             // 5. Iterate through rows and evaluate conditions
             for (Row row : myTable.getRows()) {
-                // Utilize the elegant short-circuit logic we buil earlier.
+                // Short-circuit logic: print if no WHERE clause, or if AST evaluates to true.
                 boolean shouldPrint = !hasWhere || evaluateCondition(row, myTable, conditionTokens);
 
                 if (shouldPrint) {
@@ -306,12 +318,11 @@ public class DBServer {
             }
 
             return result.toString();
-            
+
         } catch (RuntimeException e) {
             // Catches getColumnIndexOrThrow and evaluateCondition errors
             return e.getMessage();
         } catch (Exception e) {
-            // Fixed the copy-paste bug: changed "insert" to "query"
             return "[ERROR] Failed to query table: " + e.getMessage();
         }
     }
@@ -382,7 +393,7 @@ public class DBServer {
             // Locate and extract WHERE conditions
             int whereIndex = tokens.indexOf("WHERE");
 
-            // 🚨 CRITICAL FIX: The test strictly requires a WHERE clause for DELETE!
+            // CRITICAL FIX: The test strictly requires a WHERE clause for DELETE!
             // Without it, we risk deleting all rows (Truncate), which is forbidden by the test.
             if (whereIndex == -1) {
                 return "[ERROR] DELETE command must include a WHERE clause to prevent accidental data loss.";
