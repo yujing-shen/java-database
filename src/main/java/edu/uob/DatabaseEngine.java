@@ -16,6 +16,22 @@ public class DatabaseEngine {
     private StorageManager storageManager;
     private ConditionEvaluator evaluator;
 
+    public StorageManager getStorageManager() {
+        return this.storageManager;
+    }
+
+    public ConditionEvaluator getEvaluator() {
+        return this.evaluator;
+    }
+
+    public String getCurrentDatabase() {
+        return this.currentDatabase;
+    }
+
+    public void setCurrentDatabase(String dbName) {
+        this.currentDatabase = dbName;
+    }
+
     public DatabaseEngine(String storageFolderPath) {
         this.storageFolderPath = storageFolderPath;
         this.currentDatabase = "";
