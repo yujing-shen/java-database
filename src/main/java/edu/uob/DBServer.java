@@ -15,6 +15,9 @@ public class DBServer {
     private String storageFolderPath;
     private String currentDatabase;
 
+    private StorageManager storageManager;
+    private ConditionEvaluator evaluator;
+
     public static void main(String args[]) throws IOException {
         DBServer server = new DBServer();
         server.blockingListenOn(8888);
@@ -32,6 +35,8 @@ public class DBServer {
             System.out.println("Can't seem to create database storage folder " + storageFolderPath);
         }
         this.currentDatabase = "";
+        this.storageManager = new StorageManager(this.storageFolderPath);
+        this.evaluator = new ConditionEvaluator();
     }
 
     /**
@@ -49,6 +54,15 @@ public class DBServer {
         if (!trimmedCommand.endsWith(";")) {
             return "[ERROR] Invalid syntax: Command must end with a semicolon (;)";
         }
+        // check if the quotes are double
+        int quoteCount = trimmedCommand.length() - trimmedCommand.replace("'","").length();
+        if (quoteCount % 2 != 0) return "[ERROR] Unclosed single quote.";
+
+        // check if the brackets are double
+        int openBrackets = trimmedCommand.length() - trimmedCommand.replace("(", "").length();
+        int closeBrackets = trimmedCommand.length() - trimmedCommand.replace(")", "").length();
+        if (openBrackets != closeBrackets) return "[ERROR] Unbalanced brackets.";
+
         try {
             Tokenizer tokenizer = new Tokenizer();
             List<String> tokens = tokenizer.parseTokens(trimmedCommand);
@@ -105,15 +119,17 @@ public class DBServer {
     private String handleCreate(List<String> tokens) {
         if (tokens.size() < 3) return "[ERROR] Invalid CREATE syntax.";
         String createType = tokens.get(1).toUpperCase();
-        String targetName = tokens.get(2);
+        String targetName = tokens.get(2).replace(";","");
+
+        if (!isValidName(targetName)) return "[ERROR] Invalid or reserved name.";
 
         try {
             if (createType.equals("DATABASE")) {
                 // Ensure the target database directory exists
                 File dbFolder = new File(this.storageFolderPath + File.separator + targetName);
-                if (!dbFolder.exists()) {
-                    dbFolder.mkdirs();
-                }
+                if (dbFolder.exists()) return "[ERROR] Database " + targetName + " already exists.";
+
+                dbFolder.mkdirs();
                 return "[OK]\n";
 
             } else if (createType.equals("TABLE")) {
@@ -135,17 +151,29 @@ public class DBServer {
                 int openBracket = tokens.indexOf("(");
                 int closeBracket = tokens.indexOf(")");
 
+                if (openBracket != -1 && closeBracket == -1) return "[ERROR] Missing closing bracket.";
                 if (openBracket != -1 && closeBracket != -1 && openBracket < closeBracket) {
+                    boolean expectingComma = false;
+
                     for (int i = openBracket + 1; i < closeBracket; i++) {
                         String colName = tokens.get(i);
-                        if (!colName.equals(",")) {
+                        if (expectingComma) {
+                            if (!colName.equals(",")) return "[ERROR] Missing comma between columns";
+                            expectingComma = false;
+                        } else {
+                            if (colName.equalsIgnoreCase("id")) {
+                                return "[ERROR] Cannot explicitly create 'id' column";
+                            }
+                            if (!isValidName(colName)) return "[ERROR] Invalid column name: " + colName;
+                            if (newTable.getColumnNames().contains(colName)) return "[ERROR] Duplicate column name: " + colName;
+
                             newTable.addColumn(colName);
+                            expectingComma = true;
                         }
                     }
                 }
-
                 // Persist the new table schema to disk
-                saveTableToFile(newTable);
+                storageManager.saveTable( this.currentDatabase,newTable);
                 return "[OK]\n";
             }
 
@@ -166,7 +194,14 @@ public class DBServer {
      */
     private String handleInsert(List<String> tokens) {
         // 1. Guard Clauses for syntax and context validation
-        if (tokens.size() < 7 || !tokens.get(1).equalsIgnoreCase("INTO") || !tokens.contains("VALUES")) {
+        boolean hasValues = false;
+        for (String t : tokens) {
+            if (t.equalsIgnoreCase("VALUES")) {
+                hasValues = true;
+                break;
+            }
+        }
+        if (tokens.size() < 7 || !tokens.get(1).equalsIgnoreCase("INTO") || !hasValues) {
             return "[ERROR] Invalid INSERT command syntax.";
         }
         if (this.currentDatabase == null || this.currentDatabase.isEmpty()) {
@@ -175,7 +210,7 @@ public class DBServer {
 
         try {
             String tableName = tokens.get(2);
-            Table myTable = loadTableFromFile(tableName);
+            Table myTable = this.storageManager.loadTable(this.currentDatabase,tableName);
 
             // 2. Safely extract values between parentheses: ( val1 , val2 )
             int openBracket = tokens.indexOf("(");
@@ -221,7 +256,7 @@ public class DBServer {
 
             // 5. Update domain model and persist to disk
             myTable.addRow(newRow);
-            saveTableToFile(myTable);
+            this.storageManager.saveTable(this.currentDatabase, myTable);
 
             return "[OK]\n";
 
@@ -259,7 +294,7 @@ public class DBServer {
             if (fromIndex == -1 || fromIndex + 1 >= tokens.size()) return "[ERROR] Missing FROM keyword or table name.";
 
             String tableName = tokens.get(fromIndex + 1).replace(";", "");
-            Table myTable = loadTableFromFile(tableName);
+            Table myTable = storageManager.loadTable(this.currentDatabase,tableName);
 
             // 2. Extract target columns (Projection phase)
             List<String> targetColumns = new ArrayList<>();
@@ -295,6 +330,14 @@ public class DBServer {
                     if (!t.isEmpty()) conditionTokens.add(t);
                 }
             }
+            if (!hasWhere) {
+                if (fromIndex + 2 < tokens.size()) {
+                    String trailingToken = tokens.get(fromIndex + 2);
+                    if (!trailingToken.equals(";")) {
+                        return "[ERROR] Missing WHERE keyword before conditions.";
+                    }
+                }
+            }
 
             // 4. Build the Output Header
             StringBuilder result = new StringBuilder("[OK]\n");
@@ -303,7 +346,7 @@ public class DBServer {
             // 5. Iterate through rows and evaluate conditions
             for (Row row : myTable.getRows()) {
                 // Short-circuit logic: print if no WHERE clause, or if AST evaluates to true.
-                boolean shouldPrint = !hasWhere || evaluateCondition(row, myTable, conditionTokens);
+                boolean shouldPrint = !hasWhere || evaluator.evaluate(row, myTable, conditionTokens);
 
                 if (shouldPrint) {
                     // Use the cached indices directly for O(1) instantaneous access
@@ -385,7 +428,7 @@ public class DBServer {
 
         try {
             String tableName = tokens.get(2).replace(";", "");
-            Table myTable = loadTableFromFile(tableName);
+            Table myTable = storageManager.loadTable(this.currentDatabase, tableName);
             int whereIndex = tokens.indexOf("WHERE");
 
             // Mandatory WHERE clause check for safety
@@ -406,14 +449,14 @@ public class DBServer {
             while (iterator.hasNext()) {
                 Row row = iterator.next();
                 // Check the condition using our AST evaluator
-                if (evaluateCondition(row, myTable, conditionTokens)) {
+                if (evaluator.evaluate(row, myTable, conditionTokens)) {
                     // The iterator's remove() method is the ONLY safe way
                     // to remove items while iterating forward.
                     iterator.remove();
                 }
             }
 
-            saveTableToFile(myTable); //
+            storageManager.saveTable(this.currentDatabase, myTable); //
             return "[OK]\n";
 
         } catch (RuntimeException e) {
@@ -435,7 +478,7 @@ public class DBServer {
         String tableName = tokens.get(2);
 
         try {
-            Table myTable = loadTableFromFile(tableName);
+            Table myTable = this.storageManager.loadTable(this.currentDatabase, tableName);
             String action = tokens.get(3).toUpperCase();
             String columnName = tokens.get(4);
 
@@ -487,7 +530,7 @@ public class DBServer {
 
         try {
             String tableName = tokens.get(1);
-            Table myTable = loadTableFromFile(tableName);
+            Table myTable = this.storageManager.loadTable(this.currentDatabase, tableName);
 
             // Locate boundaries for SET and WHERE clauses
             int setIndex = tokens.indexOf("SET");
@@ -521,7 +564,7 @@ public class DBServer {
             // Iterate through rows and apply the update
             for (Row row : myTable.getRows()) {
                 // Determine if the current row matches the WHERE condition (or if there is no WHERE)
-                boolean shouldUpdate = !hasWhere || evaluateCondition(row, myTable, conditionTokens);
+                boolean shouldUpdate = !hasWhere || this.evaluator.evaluate(row, myTable, conditionTokens);
 
                 if (shouldUpdate) {
                     // Delegate the actual data mutation to the Row class
@@ -530,7 +573,7 @@ public class DBServer {
             }
 
             // Persist the modified state back to the hard drive
-            saveTableToFile(myTable);
+            this.storageManager.saveTable(this.currentDatabase, myTable);
             return "[OK]\n";
 
         } catch (RuntimeException e) {
@@ -569,8 +612,8 @@ public class DBServer {
             String col2Name = tokens.get(7);
 
             // Load tables from disk
-            Table table1 = loadTableFromFile(table1Name);
-            Table table2 = loadTableFromFile(table2Name);
+            Table table1 = this.storageManager.loadTable(this.currentDatabase, table1Name);
+            Table table2 = this.storageManager.loadTable(this.currentDatabase, table2Name);
 
             // Resolve column indices using OOP magic
             int index1 = table1.getColumnIndexOrThrow(col1Name);
@@ -650,6 +693,18 @@ public class DBServer {
 
 
 
+    private boolean isValidName(String name) {
+        String[] keywords = {"USE", "CREATE", "ALTER", "INSERT", "INTO",
+                "VALUES", "SELECT", "FROM", "WHERE", "UPDATE",
+                "SET", "DELETE", "JOIN", "AND", "ON",
+                "TURE", "FALSE", "LIKE"};
+        for (String keyword : keywords) {
+            if (name.equalsIgnoreCase(keyword)) return false;
+        }
+
+        return name.matches("^[A-Za-z0-9_]+$");
+    }
+
     //  === Methods below handle networking aspects of the project - you will not need to change these ! ===
 
     public void blockingListenOn(int portNumber) throws IOException {
@@ -681,206 +736,6 @@ public class DBServer {
                 writer.write("\n" + END_OF_TRANSMISSION + "\n");
                 writer.flush();
             }
-        }
-    }
-
-    /**
-     * Recursively evaluates complex boolean conditions (AST parsing).
-     * Handles nested parentheses, AND/OR logical operators, and base conditions.
-     *
-     * @param row The current database row being evaluated.
-     * @param table The table metadata used to resolve column indices.
-     * @param condTokens The tokenized WHERE clause condition.
-     * @return true if the row satisfies the condition, false otherwise.
-     * @throws RuntimeException if the condition syntax is invalid.
-     */
-    private boolean evaluateCondition(Row row, Table table, List<String> condTokens) {
-        if (condTokens == null || condTokens.isEmpty()) {
-            throw new RuntimeException("[ERROR] Empty condition provided.");
-        }
-
-        int bracketDepth = 0;
-        int mainOpIndex = -1;
-        String mainOp = "";
-
-        // Locate the top-level logical operator (AND/ OR) outside of any brackets
-        for (int i = 0; i < condTokens.size(); i++) {
-            String token = condTokens.get(i);
-            if (token.equals("(")) {
-                bracketDepth++;
-            } else if (token.equals(")")) {
-                bracketDepth--;
-            } else if (bracketDepth == 0 &&
-                    (token.equalsIgnoreCase("AND") || token.equalsIgnoreCase("OR"))) {
-                mainOpIndex = i;
-                mainOp = token.toUpperCase();
-                break;
-            }
-        }
-
-        // Recursive splitting if a top-level operator is found
-        if (mainOpIndex != -1) {
-            List<String> leftTokens = condTokens.subList(0, mainOpIndex);
-            List<String> rightTokens = condTokens.subList(mainOpIndex + 1, condTokens.size());
-
-            boolean leftResult = evaluateCondition(row, table, leftTokens);
-            boolean rightResult = evaluateCondition(row, table, rightTokens);
-
-            return mainOp.equals("AND") ? (leftResult && rightResult) : (leftResult || rightResult);
-        }
-
-        // Strip wrapping parentheses if the whole expression is enclosed
-        if (condTokens.get(0).equals("(") && condTokens.get(condTokens.size() - 1).equals(")")) {
-            return evaluateCondition(row, table, condTokens.subList(1, condTokens.size()-1));
-        }
-
-        // Base Case: Evaluate simple condition triplet (Column, Operator, Value)
-        if (condTokens.size() == 3) {
-            String col =  condTokens.get(0);
-            String op = condTokens.get(1);
-            String val = condTokens.get(2); // String iteral cleaning is delegated to checkCondtion
-            return checkCondition(row, table, col, op, val);
-        }
-
-        throw new RuntimeException("[ERROR] Invalid condition syntax: " + String.join(" ", condTokens));
-    }
-
-    /**
-     * Evaluates a base condition (e.g., age > 20) against a specific row.
-     * Utilizes encapsulated Table and Row methods to prevent tight coupling.
-     *
-     * @param row The current row being checked.
-     * @param table The table object for schema reference.
-     * @param columnName The column to check against.
-     * @param operator The comparative operator (==, !=, > LIKE, etc.)
-     * @param targetValue The value to compare with.
-     * @return true if the condition holds, false otherwise,
-     */
-    private boolean checkCondition(Row row, Table table, String columnName, String operator, String targetValue) {
-        // Delegate index resolution to the Table class (Decoupling)
-        int colIndex = table.getColumnIndexOrThrow(columnName);
-
-        // Delegate data extraction to the Row class, but clean the target here
-        String cellValue = row.getCleanValueAt(colIndex);
-        String cleanTarget = targetValue.replace("'","").trim();
-
-        switch (operator.toUpperCase()) {
-            case "==":
-                return cellValue.equals(cleanTarget);
-            case "!=":
-                return !cellValue.equals(cleanTarget);
-            case "LIKE":
-                return cellValue.contains(cleanTarget);
-            case ">":
-            case ">=":
-            case "<":
-            case "<=":
-                try {
-                    float cellNum = Float.parseFloat(cellValue);
-                    float targetNum = Float.parseFloat(targetValue);
-                    switch (operator) {
-                        case ">": return cellNum > targetNum;
-                        case "<": return cellNum < targetNum;
-                        case "<=": return cellNum <= targetNum;
-                        case ">=": return cellNum >= targetNum;
-                        default: return false;
-                    }
-                } catch (NumberFormatException e) {
-                    throw new RuntimeException("[ERROR] Cannot use math operators on non-number values");
-                }
-            default:
-                throw new RuntimeException("[ERROR] Unknown operator: " + operator);
-        }
-    }
-
-    private void saveTableToFile(Table tableToSave) {
-        if (this.currentDatabase == null || this.currentDatabase.isEmpty()) {
-            throw new RuntimeException("[ERROR] No database selected. Cannot save table.");
-        }
-
-        try {
-            // Construct the database directory path
-            String dbFolderPath = this.storageFolderPath + File.separator + this.currentDatabase;
-            // Delegate the actual file writing to the Table object
-            tableToSave.saveToFile(dbFolderPath);
-        } catch (IOException e) {
-            throw new RuntimeException("[ERROR] Failed to save table to disk: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Loads a table schema and its data from the corresponding .tab file on disk.
-     * Utilizes a try-with-resources block to guarantee the Scanner is safely closed,
-     * preventing memory leaks and I/O file lock issues.
-     *
-     * @param tableName The name of the table to be loaded.
-     * @return A fully populated Table object containing columns and rows.
-     * @throws RuntimeException if no database is selected, the file is missing, or an I/O error occurs.
-     */
-    private Table loadTableFromFile(String tableName) {
-        // Guard clause: Ensure context is valid before executing file I/O
-        if (this.currentDatabase == null || this.currentDatabase.isEmpty()) {
-            throw new RuntimeException("[ERROR] No database selected. Cannot load table.");
-        }
-
-        String tablePath = this.storageFolderPath + File.separator + this.currentDatabase + File.separator + tableName + ".tab";
-        File file = new File(tablePath);
-
-        if (!file.exists()) {
-            throw new RuntimeException("[ERROR] Table " + tableName + " does not exist.");
-        }
-
-        // OOP Best Practice: try-with-resources ensures the Scanner is automatically closed
-        // after the try block executes completely, avoiding the infamous "Scanner closed" bug.
-        try (Scanner scanner = new Scanner(file)) {
-            Table loadedTable = new Table(tableName);
-
-            // Phase 1: Parse the Header Row
-            if (scanner.hasNextLine()) {
-                String headerLine = scanner.nextLine();
-                // Use a limit of -1 to preserve trailing empty cells if any exist
-                String[] headers = headerLine.split("\t", -1);
-                loadedTable.setColumnNames(new ArrayList<>(Arrays.asList(headers)));
-            }
-
-            int maxIdFound = 0;
-
-            // Phase 2: Parse Data Rows
-            while (scanner.hasNextLine()) {
-                String dataLine = scanner.nextLine();
-
-                // Skip completely empty lines to prevent blank ghost rows
-                if (dataLine.trim().isEmpty()) continue;
-
-                String[] values = dataLine.split("\t", -1);
-                Row newRow = new Row();
-                for (String val : values) {
-                    newRow.addValue(val);
-                }
-                loadedTable.addRow(newRow);
-
-                // Phase 3: ID Recalibration Tracking
-                // Dynamically track the highest ID currently present in the database.
-                // This prevents primary key collisions during future INSERT operations.
-                if (values.length > 0) {
-                    try {
-                        int currentId = Integer.parseInt(values[0]);
-                        if (currentId > maxIdFound) {
-                            maxIdFound = currentId;
-                        }
-                    } catch (NumberFormatException e) {
-                        // Safely ignore if the first column happens to be non-numeric
-                    }
-                }
-            } // End of file scanning loop
-
-            // CRITICAL: Calibrate the ID generator ONLY ONCE after the entire file is parsed.
-            loadedTable.updateNextAvailableId(maxIdFound);
-
-            return loadedTable;
-
-        } catch (IOException e) {
-            throw new RuntimeException("[ERROR] Failed to read table file: " + e.getMessage());
         }
     }
 }

@@ -16,13 +16,13 @@ public class StorageManager {
         this.storageFolderPath = storageFolderPath;
     }
 
-    public Table loadTable(String currentDatabase, String tableName) {
+    public Table loadTable(String dbName, String tableName) {
         // Guard clause: Ensure context is valid before executing file I/O
-        if (currentDatabase == null || currentDatabase.isEmpty()) {
+        if (dbName == null || dbName.isEmpty()) {
             throw new RuntimeException("[ERROR] No database selected. Cannot load table.");
         }
 
-        String tablePath = this.storageFolderPath + File.separator + currentDatabase + File.separator + tableName + ".tab";
+        String tablePath = this.storageFolderPath + File.separator + dbName + File.separator + tableName + ".tab";
         File file = new File(tablePath);
 
         if (!file.exists()) {
@@ -83,14 +83,14 @@ public class StorageManager {
         }
     }
 
-    public void saveTable(String currentDatabase,  Table tableToSave) {
-        if (currentDatabase == null || currentDatabase.isEmpty()) {
+    public void saveTable(String dbName,  Table tableToSave) {
+        if (dbName == null || dbName.isEmpty()) {
             throw new RuntimeException("[ERROR] No database selected. Cannot save table.");
         }
 
         try {
             // Construct the database directory path
-            String dbFolderPath = this.storageFolderPath + File.separator + currentDatabase;
+            String dbFolderPath = this.storageFolderPath + File.separator + dbName;
             // Delegate the actual file writing to the Table object
             tableToSave.saveToFile(dbFolderPath);
         } catch (IOException e) {
