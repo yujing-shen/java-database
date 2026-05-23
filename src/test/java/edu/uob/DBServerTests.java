@@ -77,7 +77,19 @@ public class DBServerTests {
         DBServer server = new DBServer();
         String testDbName = "test_cmd_db";
 
+        File dbFolder = new File("databases" + File.separator + testDbName);
+        if (dbFolder.exists()) {
+            File[] files = dbFolder.listFiles();
+            if (files != null) {
+                for (File f : files) f.delete();
+            }
+            dbFolder.delete();
+        }
         String response1 = server.handleCommand("CREATE DATABASE " + testDbName + ";");
+//        System.out.println("====== DEBUG CREATE DATABASE ======");
+//        System.out.println("Expected to start with: [OK]");
+//        System.out.println("Actual response was: " + response1);
+//        System.out.println("===================================");
         assertTrue(response1.startsWith("[OK]"), "CREATE Ddatabase successfully should return [OK]");
 
         String response2 = server.handleCommand("USE " + testDbName + ";");
@@ -86,8 +98,11 @@ public class DBServerTests {
         String response3 = server.handleCommand("USE a_fake_database;");
         assertTrue(response3.startsWith("[ERROR]"), "SWITCHED to unexisting database should return [ERROR]");
 
-        File dbFolder = new File("databases" +  File.separator + testDbName);
         if (dbFolder.exists()) {
+            File[] files = dbFolder.listFiles();
+            if (files != null) {
+                for (File f : files) f.delete();
+            }
             dbFolder.delete();
         }
     }
