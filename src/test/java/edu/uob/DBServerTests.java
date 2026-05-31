@@ -19,7 +19,6 @@ public class DBServerTests {
         server = new DBServer();
     }
 
-
     @Test
     public void testEmptyCommand() {
         String response = server.handleCommand("");
@@ -85,11 +84,8 @@ public class DBServerTests {
             }
             dbFolder.delete();
         }
+
         String response1 = server.handleCommand("CREATE DATABASE " + testDbName + ";");
-//        System.out.println("====== DEBUG CREATE DATABASE ======");
-//        System.out.println("Expected to start with: [OK]");
-//        System.out.println("Actual response was: " + response1);
-//        System.out.println("===================================");
         assertTrue(response1.startsWith("[OK]"), "CREATE Ddatabase successfully should return [OK]");
 
         String response2 = server.handleCommand("USE " + testDbName + ";");
@@ -240,6 +236,7 @@ public class DBServerTests {
             dbFolder.delete();
         }
     }
+
     @Test
     public void testAlterTable() {
         DBServer server = new DBServer();
@@ -359,14 +356,10 @@ public class DBServerTests {
         String wrongConditionResponse = server.handleCommand("UPDATE " + tableName + " SET age = 30 WHERE fake_name == 'Alice';");
         assertTrue(wrongConditionResponse.startsWith("[ERROR]"), "Using a non-existent condition column must return [ERROR]");
 
-
         server.handleCommand("UPDATE " + tableName + " SET name = 'Old_Bob' WHERE age > 21;");
         String selectAfterGreater = server.handleCommand("SELECT * FROM " + tableName + ";");
         assertTrue(selectAfterGreater.contains("Old_Bob"), "Bob's name should be updated because his age (25) > 21");
         assertFalse(selectAfterGreater.contains("'Alice'\t26"), "Alice should not be affected");
-
-        //String errorMathResponse = server.handleCommand("UPDATE " + tableName + " SET age = 99 WHERE name > 'Alice';");
-        //assertTrue(errorMathResponse.startsWith("[ERROR]"), "Comparing strings with math operators must return [ERROR]");
 
         File tableFile = new File("databases" + File.separator + dbName + File.separator + tableName + ".tab");
         if (tableFile.exists()) {
@@ -449,8 +442,6 @@ public class DBServerTests {
         server.handleCommand("INSERT INTO " + t1 + " VALUES ('Owen', 'owen@uob.com');");
         server.handleCommand("INSERT INTO " + t1 + " VALUES ('Jack', 'jack@uob.com');");
 
-
-
         server.handleCommand("CREATE TABLE " + t2 + " (studentName, pass);");
         server.handleCommand("INSERT INTO " + t2 + " VALUES ('Alice', 'YES');");
         server.handleCommand("INSERT INTO " + t2 + " VALUES ('Owen', 'YES');");
@@ -464,9 +455,6 @@ public class DBServerTests {
 
         assertFalse(joinResponse.contains("students.id"), "Original id from t1 must be discarded");
         assertFalse(joinResponse.contains("marks.id"), "Original id from t2 must be discarded");
-
-        //assertFalse(joinResponse.contains("students.name"), "Matching column from t1 must be discarded");
-        //assertFalse(joinResponse.contains("marks.studentName"), "Matching column from t2 must be discarded");
 
         assertTrue(joinResponse.contains("students.email"), "Header must contain students.email");
         assertTrue(joinResponse.contains("marks.pass"), "Header must contain marks.pass");
@@ -493,7 +481,6 @@ public class DBServerTests {
             dbFolder.delete();
         }
     }
-
 
 }
 
