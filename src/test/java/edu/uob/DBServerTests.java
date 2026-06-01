@@ -69,6 +69,7 @@ public class DBServerTests {
         assertEquals("id\tName\tAge", header, "The header format is incorrect. It should be a tab-separated string.");
         assertEquals("1\tAlice\t20", firstDataLine, "The first data line is incorrect.");
         savedFile.delete();
+
     }
 
     @Test
@@ -192,6 +193,7 @@ public class DBServerTests {
         tableFile.delete();
         File dbFolder = new File("databases" + File.separator + dbName);
         dbFolder.delete();
+
     }
 
     // Task 7: Test DROP TABLE and DROP DATABASE
