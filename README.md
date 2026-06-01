@@ -1,6 +1,6 @@
 # Java Relational Database Engine
 
-## 项目亮点（简历 / 面试速览）
+## 项目亮点
 
 纯 Java 实现的**轻量级关系型数据库服务端**（无 JDBC/SQLite）：
 
