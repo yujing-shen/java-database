@@ -44,15 +44,21 @@ public class DBServer {
     public String handleCommand(String command) {
         // TODO implement your server logic here
         String trimmedCommand = command.trim();
+
         if (trimmedCommand.isEmpty()) {
             return "[ERROR] Empty command";
         }
         if (!trimmedCommand.endsWith(";")) {
             return "[ERROR] Invalid syntax: Command must end with a semicolon (;)";
         }
-        // check if the quotes are double
-        int quoteCount = trimmedCommand.length() - trimmedCommand.replace("'","").length();
-        if (quoteCount % 2 != 0) return "[ERROR] Unclosed single quote.";
+
+        // check if the single quotes are double
+        int singleQuoteCount = trimmedCommand.length() - trimmedCommand.replace("'","").length();
+        if (singleQuoteCount % 2 != 0) return "[ERROR] Unclosed single quote.";
+
+        // check if the double quotes are single
+        int doubleQuoteCount = trimmedCommand.length() - trimmedCommand.replace("\"","").length();
+        if (doubleQuoteCount % 2 != 0) return "[ERROR] Unclosed double quote.";
 
         // check if the brackets are double
         int openBrackets = trimmedCommand.length() - trimmedCommand.replace("(", "").length();
@@ -68,6 +74,7 @@ public class DBServer {
             }
 
             return this.engine.executeCommand(tokens);
+
         } catch (Exception e) {
             return "[ERROR] " + e.getMessage();
         }
