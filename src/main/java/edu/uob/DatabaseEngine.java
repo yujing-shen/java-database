@@ -96,12 +96,14 @@ public class DatabaseEngine {
     }
 
     /**
-     * Handles the CREATE command (DATABASE or TABLE).
-     * Automatically prepends the mandatory 'id' column to all new tables
-     * to ensure compatibility with standard relational operations (e.g., JOIN, INSERT).
+     * Handles CREATE DATABASE and CREATE TABLE.
      *
-     * @param tokens The tokenized SQL command list.
-     * @return A success message [OK] or an error string.
+     * <p>For CREATE DATABASE, this method creates a directory under the storage root.
+     * For CREATE TABLE, it validates context and column definitions, prepends the
+     * mandatory {@code id} column, then persists an empty table schema as a .tab file.
+     *
+     * @param tokens tokenized command (for example: CREATE TABLE students (name, age);)
+     * @return {@code [OK]} on success, or {@code [ERROR] ...} when validation/execution fails
      */
     private String handleCreate(List<String> tokens) {
         if (tokens.size() < 3) return "[ERROR] Invalid CREATE syntax.";
@@ -112,7 +114,7 @@ public class DatabaseEngine {
 
         try {
             if (createType.equals("DATABASE")) {
-                // Ensure the target database directory exists
+                // CREATE DATABASE <name>: create a folder databases/<name>
                 File dbFolder = new File(this.storageFolderPath + File.separator + targetName);
                 if (dbFolder.exists()) return "[ERROR] Database " + targetName + " already exists.";
 
@@ -124,30 +126,33 @@ public class DatabaseEngine {
                     return "[ERROR] No database selected. Please USE a database first.";
                 }
 
-                // Check for table existence to prevent accidental overwrites
+                // CREATE TABLE requires a selected DB and a non-existing target file
                 File tableFile = new File(this.storageFolderPath + File.separator + this.currentDatabase + File.separator + targetName + ".tab");
                 if (tableFile.exists()) return "[ERROR] Table " + targetName + " already exists.";
 
                 Table newTable = new Table(targetName);
 
-                // CRITICAL FIX: Automatically prepend the mandatory 'id' column!
-                // This ensures all inserted rows have a primary key to match against.
+                // Internal schema rule: every table begins with an auto-managed id column.
                 newTable.addColumn("id");
 
-                // Parse custom column names enclosed in parentheses, e.g., (name, age, email)
+                // Parse user-defined columns inside (...) and validate alternating pattern:
+                // columnName, comma, columnName, comma, ...
                 int openBracket = tokens.indexOf("(");
                 int closeBracket = tokens.indexOf(")");
 
                 if (openBracket != -1 && closeBracket == -1) return "[ERROR] Missing closing bracket.";
                 if (openBracket != -1 && closeBracket != -1 && openBracket < closeBracket) {
+                    // false => expecting a column name, true => expecting a comma
                     boolean expectingComma = false;
 
                     for (int i = openBracket + 1; i < closeBracket; i++) {
                         String colName = tokens.get(i);
                         if (expectingComma) {
+                            // After a valid column, the next token must be a comma.
                             if (!colName.equals(",")) return "[ERROR] Missing comma between columns";
                             expectingComma = false;
                         } else {
+                            // Validate column token before adding into schema.
                             if (colName.equalsIgnoreCase("id")) {
                                 return "[ERROR] Cannot explicitly create 'id' column";
                             }
@@ -159,7 +164,7 @@ public class DatabaseEngine {
                         }
                     }
                 }
-                // Persist the new table schema to disk
+                // Persist empty schema now; rows will be appended by INSERT later.
                 storageManager.saveTable( this.currentDatabase,newTable);
                 return "[OK]\n";
             }
