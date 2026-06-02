@@ -177,15 +177,18 @@ public class DatabaseEngine {
     }
 
     /**
-     * Handles the INSERT INTO command to add a new record to a table.
-     * Utilizes the Table's internal auto-increment ID generator to ensure
-     * primary key uniqueness and delegates I/O to the persistence helper.
+     * Handles INSERT INTO ... VALUES (...).
      *
-     * @param tokens The tokenized SQL command list.
-     * @return A success message [OK] or an error string.
+     * <p>Workflow:
+     * validate command/context, load target table, extract values from parentheses,
+     * verify value count against schema (excluding auto-managed id), create a new row,
+     * and persist the updated table back to disk.
+     *
+     * @param tokens tokenized command list
+     * @return {@code [OK]} on success, or {@code [ERROR] ...} if validation/execution fails
      */
     private String handleInsert(List<String> tokens) {
-        // 1. Guard Clauses for syntax and context validation
+        // 1) Guard checks: INSERT INTO ... VALUES ... and selected database context.
         boolean hasValues = false;
         for (String t : tokens) {
             if (t.equalsIgnoreCase("VALUES")) {
@@ -204,7 +207,7 @@ public class DatabaseEngine {
             String tableName = tokens.get(2);
             Table myTable = this.storageManager.loadTable(this.currentDatabase,tableName);
 
-            // 2. Safely extract values between parentheses: ( val1 , val2 )
+            // 2) Extract user values strictly inside (...) after VALUES.
             int openBracket = tokens.indexOf("(");
             int closeBracket = tokens.indexOf(")");
 
@@ -213,21 +216,20 @@ public class DatabaseEngine {
             }
 
             List<String> valuesToInsert = new ArrayList<>();
-            // Only loop STRICTLY between the brackets to prevent Tokenizer artifacts
+            // Parse only the bracket payload and ignore separators.
             for (int i = openBracket + 1; i < closeBracket; i++) {
                 String token = tokens.get(i).trim();
 
-                // Skip commas AND any stray closing brackets or semicolons
-                // that might have snuck in due to the Tokenizer implementation
+                // Ignore delimiters and keep only value tokens.
                 if (!token.equals(",") && !token.equals(")") && !token.equals(");")) {
-                    // Remove string literal quotes
+                    // Normalize quoted string literals: 'Alice' -> Alice.
                     valuesToInsert.add(token.replace("'", ""));
                 }
             }
 
-            // 3. Schema Validation: Dynamic calculation of expected columns
+            // 3) Schema check: user value count must match non-id columns.
             int expectedValueCount = myTable.getColumnNames().size();
-            // Since we mandate 'id' as the first column, we expect one less value from the user
+            // id is system-managed, so INSERT should provide one fewer value.
             if (expectedValueCount > 0 && myTable.getColumnNames().get(0).equalsIgnoreCase("id")) {
                 expectedValueCount -= 1;
             }
@@ -238,15 +240,15 @@ public class DatabaseEngine {
                         ". Values extracted: " + String.join(", ", valuesToInsert);
             }
 
-            // 4. Create new Row and use OOP Magic to generate ID!
+            // 4) Build new row with auto-increment id in column 0.
             Row newRow = new Row();
-            newRow.addValue(String.valueOf(myTable.getNextId())); // The magic auto-increment ID
+            newRow.addValue(String.valueOf(myTable.getNextId()));
 
             for (String val : valuesToInsert) {
                 newRow.addValue(val);
             }
 
-            // 5. Update domain model and persist to disk
+            // 5) Update in-memory table and flush to .tab file.
             myTable.addRow(newRow);
             this.storageManager.saveTable(this.currentDatabase, myTable);
 
