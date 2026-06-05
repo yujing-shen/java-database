@@ -387,17 +387,39 @@ public class DatabaseEngine {
         }
     }
 
+/**
+     * Handles the DROP command — removes a table file or an entire database directory.
+     *
+     * <p>Two sub-commands are supported:</p>
+     * <ul>
+     *   <li>{@code DROP TABLE &lt;name&gt;} — deletes the corresponding {@code .tab} file from the
+     *       current database. Requires an active database context (USE first).</li>
+     *   <li>{@code DROP DATABASE &lt;name&gt;} — recursively deletes the database directory and all
+     *       table files inside it. If the dropped database is the currently selected one,
+     *       {@code currentDatabase} is reset to empty to prevent dangling references.</li>
+     * </ul>
+     *
+     * <p>Note: this method bypasses {@link StorageManager} and deletes files directly,
+     * because a drop operation does not need to read or modify table contents.</p>
+     *
+     * @param tokens tokenized command list, e.g. ["DROP", "TABLE", "students", ";"]
+     * @return "[OK]" on success, or "[ERROR] ..." if the target does not exist
+     *         or the command syntax is invalid
+     */
     private String handleDrop(List<String> tokens) {
+        // Guard: minimum tokens required are DROP + target type + target name
         if (tokens.size() < 3) {
             return "[ERROR] Invalid drop command length";
         }
         String targetObjectName = tokens.get(1).toUpperCase();
 
         if (targetObjectName.equals("TABLE")) {
+            // DROP TABLE requires an active database context
             String dbError = requireCurrentDatabase();
             if (dbError != null) {
                 return dbError;
             }
+            // Resolve the .tab file path and delete it directly from disk
             String tableName = tokens.get(2);
             String tablePath = this.storageFolderPath + File.separator + this.currentDatabase + File.separator + tableName + ".tab";
             File tableFile = new File(tablePath);
@@ -408,6 +430,7 @@ public class DatabaseEngine {
                 return "[OK]";
             }
         } else if (targetObjectName.equals("DATABASE")) {
+            // DROP DATABASE: cascade-delete all files inside the directory first
             String databaseName = tokens.get(2);
             String databasePath = this.storageFolderPath + File.separator + databaseName;
             File databaseFolder = new File(databasePath);
@@ -415,6 +438,7 @@ public class DatabaseEngine {
                 return "[ERROR] Database " + databaseName + " does not exist";
             }
 
+            // Remove all contained .tab files before deleting the directory itself
             File[] allFiles = databaseFolder.listFiles();
             if (allFiles != null) {
                 for (File file : allFiles) {
@@ -422,13 +446,14 @@ public class DatabaseEngine {
                 }
             }
             databaseFolder.delete();
+
+            // Safety: clear the active database reference if it was just dropped
             if (databaseName.equals(this.currentDatabase)) {
                 this.currentDatabase = "";
             }
             return "[OK]";
         }
         return "[ERROR] Invalid DROP target: " + tokens.get(1);
-
     }
 
     /**
